@@ -36,7 +36,7 @@ fn main() {
     let address = format!("{}:{}", host, port);
 
     if args.listen {
-        let mut receiver = mode.get_receiver(address);
+        let receiver = mode.get_receiver(address);
 
         let mut buf = [0; 1024];
         loop {
@@ -45,7 +45,7 @@ fn main() {
             print!("{}", result);
         }
     } else {
-        let mut sender = mode.get_sender(address);
+        let sender = mode.get_sender(address);
 
         loop {
             let mut input = String::new();
@@ -77,13 +77,12 @@ impl Protocol {
     fn get_sender(&self, address: String) -> Box<dyn Sender> {
         match self {
             Protocol::Udp => {
-                let udp = Box::new(UdpSocket::bind("0.0.0.0:0").unwrap());
+                let udp = UdpSocket::bind("0.0.0.0:0").unwrap();
                 udp.connect(address).unwrap();
-                udp
+                Box::new(udp)
             }
             Protocol::Tcp => {
-                let tcp = TcpStream::connect(address);
-                Box::new(tcp.unwrap())
+                Box::new(TcpStream::connect(address).unwrap())
             }
         }
     }
@@ -94,41 +93,42 @@ impl Protocol {
                 Box::new(UdpSocket::bind(address).unwrap())
             }
             Protocol::Tcp => {
-                let listener = TcpListener::bind(address).unwrap();
-                Box::new(listener.accept().unwrap().0)
+                Box::new(TcpListener::bind(address).unwrap().accept().unwrap().0)
             }
         }
     }
 }
 
-trait Sender: Receiver {
-    fn send(&mut self, buf: &[u8]) -> io::Result<usize>;
+trait Sender {
+    fn send(&self, buf: &[u8]) -> io::Result<usize>;
 }
 
 trait Receiver {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize>;
+    fn read(&self, buf: &mut [u8]) -> io::Result<usize>;
 }
 
 impl Sender for UdpSocket {
-    fn send(&mut self, buf: &[u8]) -> io::Result<usize> {
+    fn send(&self, buf: &[u8]) -> io::Result<usize> {
         UdpSocket::send(self, buf)
     }
 }
 
 impl Sender for TcpStream {
-    fn send(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.write(buf)
+    fn send(&self, buf: &[u8]) -> io::Result<usize> {
+        let mut sender = &*self;
+        sender.write(buf)
     }
 }
 
 impl Receiver for UdpSocket {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+    fn read(&self, buf: &mut [u8]) -> io::Result<usize> {
         self.recv_from(buf).map(|(n, _)| n)
     }
 }
 
 impl Receiver for TcpStream {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        Read::read(self, buf)
+    fn read(&self, buf: &mut [u8]) -> io::Result<usize> {
+        let mut receiver = &*self;
+        Read::read(&mut receiver, buf)
     }
 }

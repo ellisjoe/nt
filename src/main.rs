@@ -1,9 +1,8 @@
-use std::io;
-use std::io::{stdin, Read, Write};
 use clap::{ArgGroup, Parser};
-use std::net::{TcpListener, TcpStream, UdpSocket};
+use std::io;
+use std::io::{Read, Write, stdin};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpListener, TcpStream, ToSocketAddrs, UdpSocket};
 
-const UDP_BROADCAST_ADDR: &str = "255.255.255.255";
 const ALL_INTERFACES: &str = "0.0.0.0";
 
 #[derive(Parser, Debug)]
@@ -27,7 +26,7 @@ struct Args {
     #[arg(required_unless_present = "listen")]
     host: Option<String>,
 
-    port: i32,
+    port: u16,
 }
 
 fn main() -> io::Result<()> {
@@ -44,7 +43,7 @@ fn main() -> io::Result<()> {
         let mut buf = [0; 1024];
         loop {
             let num = receiver.read(&mut buf)?;
-            let result = str::from_utf8(&buf[..num]).unwrap();
+            let result = String::from_utf8_lossy(&buf[..num]);
             println!("{}", result.trim());
         }
     } else {
@@ -80,27 +79,23 @@ impl Protocol {
     fn get_sender(&self, address: String) -> io::Result<Box<dyn Sender>> {
         match self {
             Protocol::Udp => {
-                let udp = UdpSocket::bind(ALL_INTERFACES)?;
-                if address.starts_with(UDP_BROADCAST_ADDR) {
+                let udp = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))?;
+                udp.connect(address)?;
+
+                if let IpAddr::V4(v4) = udp.peer_addr()?.ip() && v4.is_broadcast() {
                     udp.set_broadcast(true)?;
                 }
-                udp.connect(address)?;
+
                 Ok(Box::new(udp))
             }
-            Protocol::Tcp => {
-                Ok(Box::new(TcpStream::connect(address)?))
-            }
+            Protocol::Tcp => Ok(Box::new(TcpStream::connect(address)?)),
         }
     }
 
     fn get_receiver(&self, address: String) -> io::Result<Box<dyn Receiver>> {
         match self {
-            Protocol::Udp => {
-                Ok(Box::new(UdpSocket::bind(address)?))
-            }
-            Protocol::Tcp => {
-                Ok(Box::new(TcpListener::bind(address)?.accept()?.0))
-            }
+            Protocol::Udp => Ok(Box::new(UdpSocket::bind(address)?)),
+            Protocol::Tcp => Ok(Box::new(TcpListener::bind(address)?.accept()?.0)),
         }
     }
 }

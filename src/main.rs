@@ -1,9 +1,9 @@
 use crate::UdpMode::{Broadcast, Multicast, Unicast};
+use chrono::Local;
 use clap::{ArgGroup, Parser};
 use std::io;
-use std::io::{stdin, Read, Write};
+use std::io::{Read, Write, stdin};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream, UdpSocket};
-use chrono::Local;
 
 const ALL_INTERFACES: &str = "0.0.0.0";
 
@@ -49,7 +49,12 @@ fn main() -> io::Result<()> {
             let (num, addr) = receiver.read(&mut buf)?;
             let result = String::from_utf8_lossy(&buf[..num]);
             if args.verbose {
-                println!("{} [{}] {}", Local::now().format("%H:%M:%S%.3f"), addr, result.trim());
+                println!(
+                    "{} [{}] {}",
+                    Local::now().format("%H:%M:%S%.3f"),
+                    addr,
+                    result.trim()
+                );
             } else {
                 println!("{}", result.trim());
             }
@@ -109,7 +114,7 @@ impl Protocol {
                 let udp = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))?;
 
                 match host.as_str().into() {
-                    Unicast => {},
+                    Unicast => {}
                     Multicast(ip) => udp.join_multicast_v4(&ip, &Ipv4Addr::UNSPECIFIED)?,
                     Broadcast => udp.set_broadcast(true)?,
                 }
@@ -133,7 +138,7 @@ impl Protocol {
                 }
 
                 Ok(Box::new(UdpSocket::bind((host, port))?))
-            },
+            }
             Protocol::Tcp => Ok(Box::new(TcpListener::bind((host, port))?.accept()?.0)),
         }
     }
@@ -155,7 +160,7 @@ impl Sender for UdpSocket {
 
 impl Sender for TcpStream {
     fn send(&self, buf: &[u8]) -> io::Result<usize> {
-        let mut sender = &*self;
+        let mut sender = self;
         sender.write(buf)
     }
 }
@@ -168,7 +173,7 @@ impl Receiver for UdpSocket {
 
 impl Receiver for TcpStream {
     fn read(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
-        let mut receiver = &*self;
+        let mut receiver = self;
         Ok((Read::read(&mut receiver, buf)?, self.peer_addr()?))
     }
 }

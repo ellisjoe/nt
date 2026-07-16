@@ -3,6 +3,9 @@ use std::io::{stdin, Read, Write};
 use clap::{ArgGroup, Parser};
 use std::net::{TcpListener, TcpStream, UdpSocket};
 
+const UDP_BROADCAST_ADDR: &str = "255.255.255.255";
+const ALL_INTERFACES: &str = "0.0.0.0";
+
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 #[command(allow_missing_positional = true)]
@@ -27,34 +30,34 @@ struct Args {
     port: i32,
 }
 
-fn main() {
+fn main() -> io::Result<()> {
     let args = Args::parse();
     let mode = get_mode(&args);
 
-    let host = args.host.unwrap_or("0.0.0.0".to_string());
+    let host = args.host.unwrap_or(ALL_INTERFACES.to_string());
     let port = args.port;
     let address = format!("{}:{}", host, port);
 
     if args.listen {
-        let receiver = mode.get_receiver(address);
+        let receiver = mode.get_receiver(address)?;
 
         let mut buf = [0; 1024];
         loop {
-            let num = receiver.read(&mut buf).unwrap();
+            let num = receiver.read(&mut buf)?;
             let result = str::from_utf8(&buf[..num]).unwrap();
-            print!("{}", result);
+            println!("{}", result.trim());
         }
     } else {
-        let sender = mode.get_sender(address);
+        let sender = mode.get_sender(address)?;
 
         loop {
             let mut input = String::new();
-            stdin().read_line(&mut input).unwrap();
+            stdin().read_line(&mut input)?;
             let bytes = input.as_bytes();
 
             let mut sent = 0;
             while sent < bytes.len() {
-                sent = sender.send(&bytes[sent..]).unwrap();
+                sent = sender.send(&bytes[sent..])?;
             }
         }
     }
@@ -74,26 +77,29 @@ enum Protocol {
 }
 
 impl Protocol {
-    fn get_sender(&self, address: String) -> Box<dyn Sender> {
+    fn get_sender(&self, address: String) -> io::Result<Box<dyn Sender>> {
         match self {
             Protocol::Udp => {
-                let udp = UdpSocket::bind("0.0.0.0:0").unwrap();
-                udp.connect(address).unwrap();
-                Box::new(udp)
+                let udp = UdpSocket::bind(ALL_INTERFACES)?;
+                if address.starts_with(UDP_BROADCAST_ADDR) {
+                    udp.set_broadcast(true)?;
+                }
+                udp.connect(address)?;
+                Ok(Box::new(udp))
             }
             Protocol::Tcp => {
-                Box::new(TcpStream::connect(address).unwrap())
+                Ok(Box::new(TcpStream::connect(address)?))
             }
         }
     }
 
-    fn get_receiver(&self, address: String) -> Box<dyn Receiver> {
+    fn get_receiver(&self, address: String) -> io::Result<Box<dyn Receiver>> {
         match self {
             Protocol::Udp => {
-                Box::new(UdpSocket::bind(address).unwrap())
+                Ok(Box::new(UdpSocket::bind(address)?))
             }
             Protocol::Tcp => {
-                Box::new(TcpListener::bind(address).unwrap().accept().unwrap().0)
+                Ok(Box::new(TcpListener::bind(address)?.accept()?.0))
             }
         }
     }

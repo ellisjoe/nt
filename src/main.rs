@@ -2,9 +2,8 @@ use crate::UdpMode::{Broadcast, Multicast, Unicast};
 use clap::{ArgGroup, Parser};
 use std::io;
 use std::io::{stdin, Read, Write};
-use std::net::{
-    Ipv4Addr, TcpListener, TcpStream, UdpSocket,
-};
+use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream, UdpSocket};
+use chrono::Local;
 
 const ALL_INTERFACES: &str = "0.0.0.0";
 
@@ -26,6 +25,9 @@ struct Args {
     #[arg(short, long)]
     udp: bool,
 
+    #[arg(short, long)]
+    verbose: bool,
+
     #[arg(required_unless_present = "listen")]
     host: Option<String>,
 
@@ -44,9 +46,13 @@ fn main() -> io::Result<()> {
 
         let mut buf = [0; 1024];
         loop {
-            let num = receiver.read(&mut buf)?;
+            let (num, addr) = receiver.read(&mut buf)?;
             let result = String::from_utf8_lossy(&buf[..num]);
-            println!("{}", result.trim());
+            if args.verbose {
+                println!("{} [{}] {}", Local::now().format("%H:%M:%S%.3f"), addr, result.trim());
+            } else {
+                println!("{}", result.trim());
+            }
         }
     } else {
         let sender = mode.get_sender(host, port)?;
@@ -138,7 +144,7 @@ trait Sender {
 }
 
 trait Receiver {
-    fn read(&self, buf: &mut [u8]) -> io::Result<usize>;
+    fn read(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)>;
 }
 
 impl Sender for UdpSocket {
@@ -155,14 +161,14 @@ impl Sender for TcpStream {
 }
 
 impl Receiver for UdpSocket {
-    fn read(&self, buf: &mut [u8]) -> io::Result<usize> {
-        self.recv_from(buf).map(|(n, _)| n)
+    fn read(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
+        self.recv_from(buf)
     }
 }
 
 impl Receiver for TcpStream {
-    fn read(&self, buf: &mut [u8]) -> io::Result<usize> {
+    fn read(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
         let mut receiver = &*self;
-        Read::read(&mut receiver, buf)
+        Ok((Read::read(&mut receiver, buf)?, self.peer_addr()?))
     }
 }

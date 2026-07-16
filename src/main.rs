@@ -7,6 +7,7 @@ use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream, UdpSocket};
 
 const ALL_INTERFACES: &str = "0.0.0.0";
 
+/// nt (nettool) is similar to nc (netcat) but with better support for udp
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 #[command(allow_missing_positional = true)]
@@ -16,21 +17,27 @@ const ALL_INTERFACES: &str = "0.0.0.0";
         .multiple(false)
 ))]
 struct Args {
+    /// Listen on the given port and prints output to the console
     #[arg(short, long)]
     listen: bool,
 
+    /// Use a TCP socket for sending or receiving
     #[arg(short, long)]
     tcp: bool,
 
+    /// Use a UDP socket for sending or receiving
     #[arg(short, long)]
     udp: bool,
 
+    /// Print received messages in verbose mode with timestamps and source ip:port
     #[arg(short, long)]
     verbose: bool,
 
+    /// The hostname or ip to connect to
     #[arg(required_unless_present = "listen")]
     host: Option<String>,
 
+    /// The port to connect to
     port: u16,
 }
 

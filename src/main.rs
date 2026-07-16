@@ -3,7 +3,7 @@ use chrono::Local;
 use clap::{ArgGroup, Parser};
 use socket2::{Domain, Socket, Type};
 use std::io;
-use std::io::{stdin, Read, Write};
+use std::io::{stdin, stdout, Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream, UdpSocket};
 
 const ALL_INTERFACES: &str = "0.0.0.0";
@@ -29,6 +29,10 @@ struct Args {
     /// Use a UDP socket for sending or receiving
     #[arg(short, long)]
     udp: bool,
+
+    /// Output raw bytes rather than a utf8 string
+    #[arg(short, long)]
+    raw: bool,
 
     /// Print received messages in verbose mode with timestamps and source ip:port
     #[arg(short, long)]
@@ -64,7 +68,10 @@ fn main() -> io::Result<()> {
                     result.trim()
                 );
             } else {
-                println!("{}", result.trim());
+                if args.raw {
+                    stdout().write_all(&buf[..num])?;
+                    stdout().flush()?;
+                }
             }
         }
     } else {

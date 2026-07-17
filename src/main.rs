@@ -3,7 +3,7 @@ use chrono::Local;
 use clap::{ArgGroup, Parser};
 use socket2::{Domain, Socket, Type};
 use std::io;
-use std::io::{stdin, stdout, Read, Write};
+use std::io::{Read, Write, stdin, stdout};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream, UdpSocket};
 
 const ALL_INTERFACES: &str = "0.0.0.0";
@@ -59,18 +59,20 @@ fn main() -> io::Result<()> {
         let mut buf = [0; 1024];
         loop {
             let (num, addr) = receiver.read(&mut buf)?;
-            let result = String::from_utf8_lossy(&buf[..num]);
-            if args.verbose {
-                println!(
-                    "{} [{}] {}",
-                    Local::now().format("%H:%M:%S%.3f"),
-                    addr,
-                    result.trim()
-                );
+            if args.raw {
+                stdout().write_all(&buf[..num])?;
+                stdout().flush()?;
             } else {
-                if args.raw {
-                    stdout().write_all(&buf[..num])?;
-                    stdout().flush()?;
+                let result = String::from_utf8_lossy(&buf[..num]);
+                if args.verbose {
+                    println!(
+                        "{} [{}] {}",
+                        Local::now().format("%H:%M:%S%.3f"),
+                        addr,
+                        result.trim()
+                    );
+                } else {
+                    println!("{}", result.trim());
                 }
             }
         }
@@ -128,10 +130,8 @@ impl Protocol {
             Protocol::Udp => {
                 let udp = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))?;
 
-                match host.as_str().into() {
-                    Unicast => {}
-                    Multicast(ip) => udp.join_multicast_v4(&ip, &Ipv4Addr::UNSPECIFIED)?,
-                    Broadcast => udp.set_broadcast(true)?,
+                if matches!(host.as_str().into(), Broadcast) {
+                    udp.set_broadcast(true)?;
                 }
 
                 udp.connect((host, port))?;

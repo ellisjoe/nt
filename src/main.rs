@@ -146,7 +146,6 @@ impl Protocol {
             Protocol::Udp => {
                 let mode: UdpMode = host.as_str().into();
 
-                let bind_addr: SocketAddr = (Ipv4Addr::UNSPECIFIED, port).into();
                 let socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(socket2::Protocol::UDP))?;
 
                 if matches!(mode, Broadcast | Multicast(_)) {
@@ -154,6 +153,7 @@ impl Protocol {
                     socket.set_reuse_port(true)?;
                 }
 
+                let bind_addr: SocketAddr = format!("{host}:{port}").parse().unwrap();
                 socket.bind(&bind_addr.into())?;
 
                 if let Multicast(ip) = mode {

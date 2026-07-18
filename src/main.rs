@@ -148,12 +148,14 @@ impl Protocol {
 
                 let socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(socket2::Protocol::UDP))?;
 
-                if matches!(mode, Broadcast | Multicast(_)) {
+                let bind_addr: SocketAddr = if matches!(mode, Broadcast | Multicast(_)) {
                     socket.set_reuse_address(true)?;
                     socket.set_reuse_port(true)?;
-                }
+                    (Ipv4Addr::UNSPECIFIED, 0).into()
+                } else {
+                    format!("{}:{}", host, port).parse().unwrap()
+                };
 
-                let bind_addr: SocketAddr = format!("{host}:{port}").parse().unwrap();
                 socket.bind(&bind_addr.into())?;
 
                 if let Multicast(ip) = mode {

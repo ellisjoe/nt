@@ -188,6 +188,7 @@ impl Receiver for TcpStream {
 mod tests {
     use super::*;
     use Protocol::Udp;
+    use rstest::rstest;
     use std::io::Error;
 
     static MESSAGE: &str = "hello";
@@ -209,25 +210,16 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn test_udp_multicast() -> Result<(), Error> {
-        let receiver_1 = Udp.get_receiver(MULTICAST, PORT)?;
-        let receiver_2 = Udp.get_receiver(MULTICAST, PORT)?;
-        let sender = Udp.get_sender(MULTICAST, PORT)?;
-
-        sender.send(MESSAGE.as_bytes())?;
-
-        assert_eq!(receiver_1.read_string()?, MESSAGE);
-        assert_eq!(receiver_2.read_string()?, MESSAGE);
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_udp_broadcast() -> Result<(), Error> {
-        let receiver_1 = Udp.get_receiver(BROADCAST, PORT)?;
-        let receiver_2 = Udp.get_receiver(BROADCAST, PORT)?;
-        let sender = Udp.get_sender(BROADCAST, PORT)?;
+    #[rstest]
+    #[case::multicast(MULTICAST, PORT)]
+    #[case::broadcast(BROADCAST, PORT)]
+    fn test_udp_multi_receiver(
+        #[case] host: &str,
+        #[case] port: u16,
+    ) -> Result<(), Error> {
+        let receiver_1 = Udp.get_receiver(host, port)?;
+        let receiver_2 = Udp.get_receiver(host, port)?;
+        let sender = Udp.get_sender(host, port)?;
 
         sender.send(MESSAGE.as_bytes())?;
 

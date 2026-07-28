@@ -1,7 +1,10 @@
+#![deny(clippy::unwrap_used)]
+pub mod error;
+
+use crate::error::Result;
 use chrono::Local;
 use clap::{ArgGroup, Parser};
 use socket2::{Domain, Socket, Type};
-use std::io;
 use std::io::{Read, Write, stdin, stdout};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream, UdpSocket};
 
@@ -45,10 +48,15 @@ struct Args {
     port: u16,
 }
 
-fn main() -> io::Result<()> {
-    let args = Args::parse();
-    let mode = get_mode(&args);
+fn main() {
+    if let Err(e) = run(Args::parse()) {
+        eprintln!("{}", e);
+        std::process::exit(1);
+    }
+}
 
+fn run(args: Args) -> Result<()> {
+    let mode = get_mode(&args);
     let host = args.host.as_deref().unwrap_or(ALL_INTERFACES);
     let port = args.port;
 
@@ -85,7 +93,7 @@ fn main() -> io::Result<()> {
 
             let mut sent = 0;
             while sent < bytes.len() {
-                sent = sender.send(&bytes[sent..]).unwrap();
+                sent = sender.send(&bytes[sent..])?;
             }
         }
     }
@@ -105,12 +113,12 @@ enum Protocol {
 }
 
 impl Protocol {
-    fn get_sender(&self, host: &str, port: u16) -> io::Result<Box<dyn Sender>> {
+    fn get_sender(&self, host: &str, port: u16) -> Result<Box<dyn Sender>> {
         match self {
             Protocol::Udp => {
                 let udp = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))?;
 
-                if host.parse::<Ipv4Addr>().unwrap().is_broadcast() {
+                if host.parse::<Ipv4Addr>()?.is_broadcast() {
                     udp.set_broadcast(true)?;
                 }
 
@@ -121,10 +129,10 @@ impl Protocol {
         }
     }
 
-    fn get_receiver(&self, host: &str, port: u16) -> io::Result<Box<dyn Receiver>> {
+    fn get_receiver(&self, host: &str, port: u16) -> Result<Box<dyn Receiver>> {
         match self {
             Protocol::Udp => {
-                let ip: Ipv4Addr = host.parse().unwrap();
+                let ip: Ipv4Addr = host.parse()?;
 
                 let socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(socket2::Protocol::UDP))?;
 
@@ -151,34 +159,34 @@ impl Protocol {
 }
 
 trait Sender {
-    fn send(&self, buf: &[u8]) -> io::Result<usize>;
+    fn send(&self, buf: &[u8]) -> Result<usize>;
 }
 
 trait Receiver {
-    fn read(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)>;
+    fn read(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)>;
 }
 
 impl Sender for UdpSocket {
-    fn send(&self, buf: &[u8]) -> io::Result<usize> {
-        UdpSocket::send(self, buf)
+    fn send(&self, buf: &[u8]) -> Result<usize> {
+        Ok(UdpSocket::send(self, buf)?)
     }
 }
 
 impl Sender for TcpStream {
-    fn send(&self, buf: &[u8]) -> io::Result<usize> {
+    fn send(&self, buf: &[u8]) -> Result<usize> {
         let mut sender = self;
-        sender.write(buf)
+        Ok(sender.write(buf)?)
     }
 }
 
 impl Receiver for UdpSocket {
-    fn read(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
-        self.recv_from(buf)
+    fn read(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
+        Ok(self.recv_from(buf)?)
     }
 }
 
 impl Receiver for TcpStream {
-    fn read(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
+    fn read(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
         let mut receiver = self;
         Ok((Read::read(&mut receiver, buf)?, self.peer_addr()?))
     }
@@ -189,7 +197,6 @@ mod tests {
     use super::*;
     use Protocol::Udp;
     use rstest::rstest;
-    use std::io::Error;
 
     static MESSAGE: &str = "hello";
     static LOCALHOST: &str = "127.0.0.1";
@@ -198,7 +205,7 @@ mod tests {
     static PORT: u16 = 1111;
 
     #[test]
-    fn test_udp_localhost() -> Result<(), Error> {
+    fn test_udp_localhost() -> Result<()> {
         let receiver = Udp.get_receiver(LOCALHOST, PORT)?;
         let sender = Udp.get_sender(LOCALHOST, PORT)?;
 
@@ -213,10 +220,7 @@ mod tests {
     #[rstest]
     #[case::multicast(MULTICAST, PORT)]
     #[case::broadcast(BROADCAST, PORT)]
-    fn test_udp_multi_receiver(
-        #[case] host: &str,
-        #[case] port: u16,
-    ) -> Result<(), Error> {
+    fn test_udp_multi_receiver(#[case] host: &str, #[case] port: u16) -> Result<()> {
         let receiver_1 = Udp.get_receiver(host, port)?;
         let receiver_2 = Udp.get_receiver(host, port)?;
         let sender = Udp.get_sender(host, port)?;
@@ -230,11 +234,11 @@ mod tests {
     }
 
     trait ReadString {
-        fn read_string(&self) -> io::Result<String>;
+        fn read_string(&self) -> Result<String>;
     }
 
     impl ReadString for dyn Receiver {
-        fn read_string(&self) -> io::Result<String> {
+        fn read_string(&self) -> Result<String> {
             let mut buf = [0; 1024];
             let (n, _) = self.read(&mut buf)?;
             Ok(String::from_utf8_lossy(&buf[..n]).to_string())

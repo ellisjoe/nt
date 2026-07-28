@@ -1,4 +1,3 @@
-use crate::UdpMode::{Broadcast, Multicast, Unicast};
 use chrono::Local;
 use clap::{ArgGroup, Parser};
 use socket2::{Domain, Socket, Type};
@@ -50,7 +49,7 @@ fn main() -> io::Result<()> {
     let args = Args::parse();
     let mode = get_mode(&args);
 
-    let host = args.host.unwrap_or(ALL_INTERFACES.to_string());
+    let host = args.host.as_deref().unwrap_or(ALL_INTERFACES);
     let port = args.port;
 
     if args.listen {
@@ -105,32 +104,13 @@ enum Protocol {
     Tcp,
 }
 
-enum UdpMode {
-    Unicast,
-    Multicast(Ipv4Addr),
-    Broadcast,
-}
-
-impl From<&str> for UdpMode {
-    fn from(host: &str) -> Self {
-        if let Ok(ip) = host.parse::<Ipv4Addr>() {
-            if ip.is_multicast() {
-                return Multicast(ip);
-            } else if ip.is_broadcast() {
-                return Broadcast;
-            }
-        }
-        Unicast
-    }
-}
-
 impl Protocol {
-    fn get_sender(&self, host: String, port: u16) -> io::Result<Box<dyn Sender>> {
+    fn get_sender(&self, host: &str, port: u16) -> io::Result<Box<dyn Sender>> {
         match self {
             Protocol::Udp => {
                 let udp = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))?;
 
-                if matches!(host.as_str().into(), Broadcast) {
+                if host.parse::<Ipv4Addr>().unwrap().is_broadcast() {
                     udp.set_broadcast(true)?;
                 }
 
@@ -141,24 +121,24 @@ impl Protocol {
         }
     }
 
-    fn get_receiver(&self, host: String, port: u16) -> io::Result<Box<dyn Receiver>> {
+    fn get_receiver(&self, host: &str, port: u16) -> io::Result<Box<dyn Receiver>> {
         match self {
             Protocol::Udp => {
-                let mode: UdpMode = host.as_str().into();
+                let ip: Ipv4Addr = host.parse().unwrap();
 
                 let socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(socket2::Protocol::UDP))?;
 
-                let bind_addr: SocketAddr = if matches!(mode, Broadcast | Multicast(_)) {
+                let bind_addr: SocketAddr = if ip.is_multicast() || ip.is_broadcast() {
                     socket.set_reuse_address(true)?;
                     socket.set_reuse_port(true)?;
-                    (Ipv4Addr::UNSPECIFIED, 0).into()
+                    (Ipv4Addr::UNSPECIFIED, port).into()
                 } else {
-                    format!("{}:{}", host, port).parse().unwrap()
+                    (ip, port).into()
                 };
 
                 socket.bind(&bind_addr.into())?;
 
-                if let Multicast(ip) = mode {
+                if ip.is_multicast() {
                     socket.join_multicast_v4(&ip, &Ipv4Addr::UNSPECIFIED)?;
                 }
 
@@ -201,5 +181,71 @@ impl Receiver for TcpStream {
     fn read(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
         let mut receiver = self;
         Ok((Read::read(&mut receiver, buf)?, self.peer_addr()?))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use Protocol::Udp;
+    use std::io::Error;
+
+    static MESSAGE: &str = "hello";
+    static LOCALHOST: &str = "127.0.0.1";
+    static MULTICAST: &str = "224.0.0.251";
+    static BROADCAST: &str = "255.255.255.255";
+    static PORT: u16 = 1111;
+
+    #[test]
+    fn test_udp_localhost() -> Result<(), Error> {
+        let receiver = Udp.get_receiver(LOCALHOST, PORT)?;
+        let sender = Udp.get_sender(LOCALHOST, PORT)?;
+
+        sender.send(MESSAGE.as_bytes())?;
+        let result = receiver.read_string()?;
+
+        assert_eq!(result, MESSAGE);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_udp_multicast() -> Result<(), Error> {
+        let receiver_1 = Udp.get_receiver(MULTICAST, PORT)?;
+        let receiver_2 = Udp.get_receiver(MULTICAST, PORT)?;
+        let sender = Udp.get_sender(MULTICAST, PORT)?;
+
+        sender.send(MESSAGE.as_bytes())?;
+
+        assert_eq!(receiver_1.read_string()?, MESSAGE);
+        assert_eq!(receiver_2.read_string()?, MESSAGE);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_udp_broadcast() -> Result<(), Error> {
+        let receiver_1 = Udp.get_receiver(BROADCAST, PORT)?;
+        let receiver_2 = Udp.get_receiver(BROADCAST, PORT)?;
+        let sender = Udp.get_sender(BROADCAST, PORT)?;
+
+        sender.send(MESSAGE.as_bytes())?;
+
+        assert_eq!(receiver_1.read_string()?, MESSAGE);
+        assert_eq!(receiver_2.read_string()?, MESSAGE);
+
+        Ok(())
+    }
+
+    trait ReadString {
+        fn read_string(&self) -> io::Result<String>;
+    }
+
+    impl ReadString for dyn Receiver {
+        fn read_string(&self) -> io::Result<String> {
+            let mut buf = [0; 1024];
+            let (n, _) = self.read(&mut buf)?;
+            Ok(String::from_utf8_lossy(&buf[..n]).to_string())
+        }
     }
 }

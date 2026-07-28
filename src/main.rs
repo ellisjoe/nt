@@ -70,16 +70,13 @@ fn run(args: Args) -> Result<()> {
                 stdout().write_all(&buf[..num])?;
                 stdout().flush()?;
             } else {
-                let result = String::from_utf8_lossy(&buf[..num]);
+                let string = String::from_utf8_lossy(&buf[..num]);
+                let result = string.trim();
                 if args.verbose {
-                    println!(
-                        "{} [{}] {}",
-                        Local::now().format("%H:%M:%S%.3f"),
-                        addr,
-                        result.trim()
-                    );
+                    let timestamp = Local::now().format("%H:%M:%S%.3f");
+                    println!("{timestamp} [{addr}] {result}");
                 } else {
-                    println!("{}", result.trim());
+                    println!("{result}");
                 }
             }
         }

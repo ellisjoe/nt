@@ -1,9 +1,10 @@
 #![deny(clippy::unwrap_used)]
 pub mod error;
+mod writer;
 
 use crate::Protocol::{Tcp, Udp};
 use crate::error::Result;
-use chrono::Local;
+use crate::writer::{Formatter, RawFormatter, VerboseFormatter};
 use clap::{ArgGroup, Parser};
 use socket2::{Domain, Socket, Type};
 use std::io::{Read, Write, stdin, stdout};
@@ -33,10 +34,6 @@ struct Args {
     #[arg(short, long)]
     udp: bool,
 
-    /// Output raw bytes rather than a utf8 string
-    #[arg(short, long)]
-    raw: bool,
-
     /// Print received messages in verbose mode with timestamps and source ip:port
     #[arg(short, long)]
     verbose: bool,
@@ -60,6 +57,11 @@ fn run(args: Args) -> Result<()> {
     let mode = if args.udp { Udp } else { Tcp };
     let host = args.host.as_deref().unwrap_or(ALL_INTERFACES);
     let port = args.port;
+    let formatter: &dyn Formatter = if args.verbose {
+        &VerboseFormatter
+    } else {
+        &RawFormatter
+    };
 
     if args.listen {
         let receiver = mode.get_receiver(host, port)?;
@@ -67,19 +69,9 @@ fn run(args: Args) -> Result<()> {
         let mut buf = [0; 1024];
         loop {
             let (num, addr) = receiver.read(&mut buf)?;
-            if args.raw {
-                stdout().write_all(&buf[..num])?;
-                stdout().flush()?;
-            } else {
-                let string = String::from_utf8_lossy(&buf[..num]);
-                let result = string.trim();
-                if args.verbose {
-                    let timestamp = Local::now().format("%H:%M:%S%.3f");
-                    println!("{timestamp} [{addr}] {result}");
-                } else {
-                    println!("{result}");
-                }
-            }
+            let formatted = formatter.format(addr, &buf[..num]);
+            stdout().write_all(formatted.as_ref())?;
+            stdout().flush()?;
         }
     } else {
         let sender = mode.get_sender(host, port)?;
@@ -87,12 +79,7 @@ fn run(args: Args) -> Result<()> {
         loop {
             let mut input = String::new();
             stdin().read_line(&mut input)?;
-            let bytes = input.as_bytes();
-
-            let mut sent = 0;
-            while sent < bytes.len() {
-                sent = sender.send(&bytes[sent..])?;
-            }
+            sender.send_all(input.as_bytes())?;
         }
     }
 }
@@ -121,7 +108,7 @@ impl Protocol {
 
     fn get_receiver(&self, host: &str, port: u16) -> Result<Box<dyn Receiver>> {
         match self {
-            Protocol::Udp => {
+            Udp => {
                 let ip: Ipv4Addr = host.parse()?;
 
                 let socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(socket2::Protocol::UDP))?;
@@ -143,13 +130,21 @@ impl Protocol {
                 let udp: UdpSocket = socket.into();
                 Ok(Box::new(udp))
             }
-            Protocol::Tcp => Ok(Box::new(TcpListener::bind((host, port))?.accept()?.0)),
+            Tcp => Ok(Box::new(TcpListener::bind((host, port))?.accept()?.0)),
         }
     }
 }
 
 trait Sender {
     fn send(&self, buf: &[u8]) -> Result<usize>;
+
+    fn send_all(&self, buf: &[u8]) -> Result<()> {
+        let mut sent = 0;
+        while sent < buf.len() {
+            sent = self.send(&buf[sent..])?;
+        }
+        Ok(())
+    }
 }
 
 trait Receiver {

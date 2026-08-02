@@ -102,8 +102,8 @@ impl Protocol {
             Udp => {
                 let udp = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))?;
 
-                if host.parse::<Ipv4Addr>()?.is_broadcast() {
-                    udp.set_broadcast(true)?;
+                if let Ok(ip) = host.parse::<Ipv4Addr>() {
+                    udp.set_broadcast(ip.is_broadcast())?;
                 }
 
                 udp.connect((host, port))?;

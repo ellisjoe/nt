@@ -1,6 +1,7 @@
 #![deny(clippy::unwrap_used)]
 pub mod error;
 
+use crate::Protocol::{Tcp, Udp};
 use crate::error::Result;
 use chrono::Local;
 use clap::{ArgGroup, Parser};
@@ -56,7 +57,7 @@ fn main() {
 }
 
 fn run(args: Args) -> Result<()> {
-    let mode = get_mode(&args);
+    let mode = if args.udp { Udp } else { Tcp };
     let host = args.host.as_deref().unwrap_or(ALL_INTERFACES);
     let port = args.port;
 
@@ -96,14 +97,6 @@ fn run(args: Args) -> Result<()> {
     }
 }
 
-fn get_mode(args: &Args) -> Protocol {
-    if args.udp {
-        Protocol::Udp
-    } else {
-        Protocol::Tcp
-    }
-}
-
 enum Protocol {
     Udp,
     Tcp,
@@ -112,7 +105,7 @@ enum Protocol {
 impl Protocol {
     fn get_sender(&self, host: &str, port: u16) -> Result<Box<dyn Sender>> {
         match self {
-            Protocol::Udp => {
+            Udp => {
                 let udp = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))?;
 
                 if host.parse::<Ipv4Addr>()?.is_broadcast() {
@@ -122,7 +115,7 @@ impl Protocol {
                 udp.connect((host, port))?;
                 Ok(Box::new(udp))
             }
-            Protocol::Tcp => Ok(Box::new(TcpStream::connect((host, port))?)),
+            Tcp => Ok(Box::new(TcpStream::connect((host, port))?)),
         }
     }
 

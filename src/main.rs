@@ -1,12 +1,12 @@
 #![deny(clippy::unwrap_used)]
 pub mod error;
+mod formatter;
 mod socket;
-mod writer;
 
 use crate::Protocol::{Tcp, Udp};
 use crate::error::Result;
+use crate::formatter::{DefaultFormatter, Formatter, RawFormatter, VerboseFormatter};
 use crate::socket::{NtUdpSocket, Receiver, Sender};
-use crate::writer::{DefaultFormatter, Formatter, RawFormatter, VerboseFormatter};
 use clap::{ArgGroup, Parser};
 use std::io::{Write, stdin, stdout};
 use std::net::{TcpListener, TcpStream};

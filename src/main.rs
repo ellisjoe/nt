@@ -123,7 +123,7 @@ mod tests {
     static LOCALHOST: &str = "127.0.0.1";
     static MULTICAST: &str = "224.0.0.251";
     static BROADCAST: &str = "255.255.255.255";
-    static PORT: u16 = 1111;
+    static PORT: u16 = 8888;
 
     #[test]
     fn test_udp_localhost() -> Result<()> {

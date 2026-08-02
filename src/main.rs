@@ -27,7 +27,7 @@ struct Args {
     #[arg(short, long)]
     listen: bool,
 
-    /// Use a TCP socket for sending or receiving
+    /// Use a TCP socket for sending or receiving [default]
     #[arg(short, long)]
     tcp: bool,
 

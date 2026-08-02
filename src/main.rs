@@ -4,7 +4,7 @@ mod writer;
 
 use crate::Protocol::{Tcp, Udp};
 use crate::error::Result;
-use crate::writer::{Formatter, RawFormatter, VerboseFormatter};
+use crate::writer::{DefaultFormatter, Formatter, RawFormatter, VerboseFormatter};
 use clap::{ArgGroup, Parser};
 use socket2::{Domain, Socket, Type};
 use std::io::{Read, Write, stdin, stdout};
@@ -34,6 +34,10 @@ struct Args {
     #[arg(short, long)]
     udp: bool,
 
+    /// Output raw bytes rather than a utf8 string
+    #[arg(short, long)]
+    raw: bool,
+
     /// Print received messages in verbose mode with timestamps and source ip:port
     #[arg(short, long)]
     verbose: bool,
@@ -57,10 +61,13 @@ fn run(args: Args) -> Result<()> {
     let mode = if args.udp { Udp } else { Tcp };
     let host = args.host.as_deref().unwrap_or(ALL_INTERFACES);
     let port = args.port;
-    let formatter: &dyn Formatter = if args.verbose {
+
+    let formatter: &dyn Formatter = if args.raw {
+        &RawFormatter
+    } else if args.verbose {
         &VerboseFormatter
     } else {
-        &RawFormatter
+        &DefaultFormatter
     };
 
     if args.listen {

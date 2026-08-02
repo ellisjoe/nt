@@ -1,4 +1,4 @@
-[![CI](https://github.com/ellisjoe/nt/actions/workflows/rust.yml/badge.svg)](https://github.com/ellisjoe/nt/actions/workflows/rust.yml/badge.svg)
+[![CI](https://github.com/ellisjoe/nt/actions/workflows/rust.yml/badge.svg)](https://github.com/ellisjoe/nt/actions)
 
 NetTool
 =======

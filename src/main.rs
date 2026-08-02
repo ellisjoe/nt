@@ -207,20 +207,19 @@ mod tests {
         let sender = Udp.get_sender(LOCALHOST, PORT)?;
 
         sender.send(MESSAGE.as_bytes())?;
-        let result = receiver.read_string()?;
 
-        assert_eq!(result, MESSAGE);
+        assert_eq!(receiver.read_string()?, MESSAGE);
 
         Ok(())
     }
 
     #[rstest]
-    #[case::multicast(MULTICAST, PORT)]
-    #[case::broadcast(BROADCAST, PORT)]
-    fn test_udp_multi_receiver(#[case] host: &str, #[case] port: u16) -> Result<()> {
-        let receiver_1 = Udp.get_receiver(host, port)?;
-        let receiver_2 = Udp.get_receiver(host, port)?;
-        let sender = Udp.get_sender(host, port)?;
+    #[case::multicast(MULTICAST)]
+    #[case::broadcast(BROADCAST)]
+    fn test_udp_multi_receiver(#[case] host: &str) -> Result<()> {
+        let receiver_1 = Udp.get_receiver(host, PORT)?;
+        let receiver_2 = Udp.get_receiver(host, PORT)?;
+        let sender = Udp.get_sender(host, PORT)?;
 
         sender.send(MESSAGE.as_bytes())?;
 
